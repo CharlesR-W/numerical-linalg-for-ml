@@ -4,26 +4,36 @@ ARENA-style Jupyter exercises in matrix-free numerical linear algebra,
 focused on the two objects ML researchers actually care about: the **loss
 Hessian** and the **empirical NTK**.
 
-## Status
+The angle: the matrices we care about are too large to materialize but
+cheap to apply.  So the question is never "how do I decompose this dense
+matrix" but "what can I learn from black-box matvecs?"  The answer is
+Krylov + randomization + stochastic estimation, in a few hundred lines
+of PyTorch.
 
-| Notebook                          | Status      | Time   |
-|-----------------------------------|-------------|--------|
-| 1. Krylov (power iter + Lanczos)  | shipped     | ~145m  |
-| 2. Randomized (rSVD + eNTK)       | shipped     | ~100m  |
-| 3. Estimation + Perturbation      | shipped     | ~115m  |
-| 4. Capstone (tiny_mlp across training) | shipped     | ~120m  |
+Companion blog post: [Numerical Linear Algebra for ML](https://charlesr-w.github.io/crw-blog/tutorials/)
 
-See `design.md` for the full design.
+## Notebooks
+
+| Notebook                                | Time   | Topics                                                 |
+|-----------------------------------------|--------|--------------------------------------------------------|
+| 1. Krylov (power iter + Lanczos)        | ~145m  | HVPs, deflation, Lanczos, loss of orthogonality        |
+| 2. Randomized (rSVD + eNTK)             | ~100m  | stable rank, HMT range finder, matrix-free eNTK matvec |
+| 3. Estimation + Perturbation            | ~115m  | Hutchinson trace, SLQ density of states, Weyl, Davis-Kahan |
+| 4. Capstone (tiny_mlp across training)  | ~120m  | spectroscopy across 4 training checkpoints            |
+
+See `design.md` for the design rationale, scope, and pedagogical choices.
 
 ## Getting started
 
 ```bash
-cd ~/Programming/Claude/tutorials/numerical-linalg-for-ml
+git clone https://github.com/CharlesR-W/numerical-linalg-for-ml.git
+cd numerical-linalg-for-ml
 uv sync --all-groups
 uv run jupyter lab notebooks/01_krylov.ipynb
 ```
 
-Solutions live in `solutions/`.  Don't peek until you've tried.
+Exercises are `# YOUR CODE HERE` stubs.  Reference solutions live in
+`solutions/` -- don't peek until you've tried.
 
 ## The O() table
 
@@ -58,16 +68,17 @@ Solutions live in `solutions/`.  Don't peek until you've tried.
 
 ```
 src/         shared models, plotting, data loaders, test harness
-solutions/   reference implementations (also notebook-1's solutions)
+solutions/   reference implementations
 notebooks/   .ipynb files + build_*.py scripts that generate them
 tests/       pytest unit tests for solutions/ and src/
-data/        cached MNIST/CIFAR subsets (not committed)
+scripts/     training script that produces the capstone checkpoints
+data/        cached MNIST subset + capstone checkpoints
 ```
 
 ## Development
 
-Notebooks are built from `notebooks/build_*.py` scripts.  Editing the `.py`
-is the source-of-truth path; the `.ipynb` is regenerated.
+Notebooks are built from `notebooks/build_*.py` scripts.  Editing the
+`.py` is the source-of-truth path; the `.ipynb` is regenerated.
 
 ```bash
 # rebuild a notebook from its build script
@@ -79,3 +90,8 @@ uv run pytest
 # end-to-end smoke test of a notebook (injects solutions, executes all cells)
 uv run python notebooks/_run_with_solutions.py
 ```
+
+## Credits
+
+Designed and curated by Charles Renshaw-Whitman.  Written with Claude
+(Anthropic) -- implementation, exercise stubs, and reference solutions.
