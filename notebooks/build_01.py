@@ -79,7 +79,140 @@ print('environment ready')
 
 
 def _section_0_nla_prelim(cells):
-    pass
+    cells.append(md(r"""
+## 0. NLA you'll need
+
+This section establishes the four concepts the rest of the notebook leans on.
+We state, don't derive — proofs in any numerical-linear-algebra textbook.
+
+### 0.1 Operator vs Frobenius norm
+
+For a matrix $A \in \mathbb{R}^{m \times n}$:
+
+- **Operator norm** $\|A\|_2 = \sigma_{\max}(A)$.  Controls the worst-case
+  matvec amplification: $\|Av\|_2 \le \|A\|_2 \|v\|_2$.
+- **Frobenius norm** $\|A\|_F = \sqrt{\sum_{ij} A_{ij}^2} = \sqrt{\sum_i \sigma_i^2}$.
+  Controls the *variance* of stochastic trace estimators.
+
+Always $\|A\|_2 \le \|A\|_F \le \sqrt{\text{rank}(A)} \cdot \|A\|_2$.
+"""))
+    cells.append(code("""
+# Exercise 0.1 (🔴⚪⚪⚪⚪, 3 min)
+# Compute both norms of a 20x20 random matrix, verify the inequality.
+torch.manual_seed(0)
+A = torch.randn(20, 20)
+
+op_norm = None  # YOUR CODE HERE: compute ||A||_2
+fro_norm = None  # YOUR CODE HERE: compute ||A||_F
+
+assert op_norm is not None and fro_norm is not None, 'fill in op_norm and fro_norm'
+assert op_norm <= fro_norm <= (20 ** 0.5) * op_norm
+print(f'||A||_2 = {op_norm:.3f}, ||A||_F = {fro_norm:.3f}')
+"""))
+
+    cells.append(md(r"""
+### 0.2 Condition number
+
+For a square invertible $A$: $\kappa(A) = \sigma_{\max}/\sigma_{\min}$.
+For symmetric positive-definite $A$ this is $\lambda_{\max}/\lambda_{\min}$.
+
+**Why it matters:** in `fp32`, solving $A x = b$ loses about $\log_{10}\kappa$
+digits.  Iterative methods converge at a rate that depends on the eigenvalue
+*gap*, which is bounded by $\kappa$.
+
+Below: we make $\kappa$ progressively worse and watch the residual blow up.
+"""))
+    cells.append(code(r"""
+# Exercise 0.2 (🔴🔴⚪⚪⚪, 8 min)
+# Build a symmetric PSD A with engineered eigenvalues {1, 1, ..., 1, 1/kappa},
+# solve Ax = b in fp32, plot relative residual vs kappa on log-log axes.
+
+def make_conditioned_spd(n: int, kappa: float, seed: int = 0):
+    g = torch.Generator().manual_seed(seed)
+    Q = torch.linalg.qr(torch.randn(n, n, generator=g))[0]
+    eigs = torch.ones(n)
+    eigs[-1] = 1.0 / kappa
+    return Q @ torch.diag(eigs) @ Q.T
+
+n = 30
+kappas = torch.logspace(0, 8, 9)
+residuals = []
+for kappa in kappas:
+    A = make_conditioned_spd(n, kappa.item()).float()
+    x_true = torch.randn(n)
+    b = A @ x_true
+    x_hat = None  # YOUR CODE HERE: solve A x_hat = b in fp32
+    assert x_hat is not None, 'solve A x_hat = b using torch.linalg.solve'
+    residuals.append(((A @ x_hat - b).norm() / b.norm()).item())
+
+plt.figure()
+plt.loglog(kappas.numpy(), residuals, 'o-')
+plt.xlabel(r'$\kappa(A)$'); plt.ylabel('relative residual')
+plt.title('fp32 solve precision vs condition number')
+plt.show()
+"""))
+
+    cells.append(md(r"""
+### 0.3 Machine epsilon
+
+`fp32` has $\epsilon_{\text{mach}} \approx 1.19 \times 10^{-7}$.
+That's the smallest $x$ such that $1 + x$ is representable as
+distinct from $1$.  Iterative methods compound rounding error,
+and Lanczos (Section 5) is the textbook example of compounded
+roundoff destroying a beautiful algorithm.
+"""))
+    cells.append(code("""
+# Exercise 0.3 (🔴⚪⚪⚪⚪, 3 min)
+# Find epsilon_machine empirically for fp32 and fp64.
+
+def find_eps(dtype):
+    one = torch.tensor(1.0, dtype=dtype)
+    eps = torch.tensor(1.0, dtype=dtype)
+    while one + eps / 2 > one:
+        eps = eps / 2
+    return eps.item()
+
+eps32 = None  # YOUR CODE HERE
+eps64 = None  # YOUR CODE HERE
+assert eps32 is not None and eps64 is not None
+print(f'eps(fp32) ≈ {eps32:.3e};  eps(fp64) ≈ {eps64:.3e}')
+"""))
+
+    cells.append(md(r"""
+### 0.4 Rayleigh quotient & symmetric eigenvalues
+
+For symmetric $A$ and unit $v$:
+
+$$
+R(v) = v^\top A v \in [\lambda_{\min}(A), \, \lambda_{\max}(A)].
+$$
+
+- $R(v_{\max}) = \lambda_{\max}$ when $v_{\max}$ is the top eigenvector.
+- Power iteration is *ascent on $R$*: each step pushes $v$ further in the
+  direction of largest $R$.
+
+**Eigenvalues vs singular values.**  For symmetric $A$,
+$\sigma_i(A) = |\lambda_i(A)|$ — singular values are absolute values of
+eigenvalues.  For the Hessian, this matters: the **largest** eigenvalue and
+the **largest-magnitude** eigenvalue can differ if the Hessian is indefinite
+(common during training).  Power iteration converges to the largest-magnitude
+one.
+"""))
+    cells.append(code("""
+# Exercise 0.4 (🔴⚪⚪⚪⚪, 2 min)
+# Verify: R(v) is bounded by [lambda_min, lambda_max] for random unit v.
+
+torch.manual_seed(0)
+A = torch.randn(15, 15); A = A + A.T
+eigs = torch.linalg.eigvalsh(A)
+lam_min, lam_max = eigs.min().item(), eigs.max().item()
+
+for _ in range(20):
+    v = torch.randn(15); v = v / v.norm()
+    R = (v @ A @ v).item()
+    assert lam_min - 1e-6 <= R <= lam_max + 1e-6, f'R={R} outside [{lam_min},{lam_max}]'
+print(f'all 20 Rayleigh quotients in [{lam_min:.3f}, {lam_max:.3f}] ✓')
+"""))
 
 
 def _section_1_hvp(cells):
