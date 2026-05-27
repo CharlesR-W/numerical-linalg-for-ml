@@ -568,7 +568,85 @@ plt.tight_layout(); plt.show()
 
 
 def _section_5_orthogonality(cells):
-    pass
+    cells.append(md(r"""
+## 5. Loss of orthogonality — and how to fix it
+
+The Lanczos recurrence is mathematically beautiful but **numerically a trap**.
+In exact arithmetic, $Q^\top Q = I$.  In `fp32`, accumulated rounding error
+makes the columns of $Q$ drift out of orthogonality.  Once they do, Ritz
+values start appearing as **ghost copies** — the algorithm "rediscovers" the
+top eigenvalue multiple times.
+
+The **money plot** of this section: $\|Q^\top Q - I\|_\infty$ blowing up
+around step 20-30 in `fp32` for our 40×40 test matrix.
+"""))
+    cells.append(md(r"""
+### Exercise 5.1: Watch orthogonality decay (🔴🔴⚪⚪⚪, 8 min)
+
+Modify your `lanczos_no_reorth` to **also return $\|Q[:, :j+1]^\top Q[:, :j+1] - I\|_\infty$
+at every step**.  Run for 40 steps on a 40×40 random symmetric matrix in
+`fp32`.  Plot the orthogonality error vs step.
+"""))
+    cells.append(code(r"""
+def lanczos_track_orth(matvec, dim, k, reorth='none', seed=0):
+    \"\"\"As above but also returns orthogonality-error history.\"\"\"
+    # YOUR CODE HERE: copy your lanczos_no_reorth and add per-step orth tracking.
+    raise NotImplementedError
+
+A40 = (torch.randn(40, 40, generator=torch.Generator().manual_seed(7))).float()
+A40 = A40 + A40.T
+
+_, _, orth_none = lanczos_track_orth(lambda v: A40 @ v, dim=40, k=40, reorth='none')
+
+plt.figure()
+plt.semilogy(orth_none, label='no reorth (fp32)')
+plt.xlabel('step'); plt.ylabel(r'$\| Q^\top Q - I \|_\infty$')
+plt.title('Orthogonality loss in classical Lanczos')
+plt.legend(); plt.show()
+"""))
+    cells.append(md(r"""
+### Exercise 5.2: Full reorthogonalization (🔴🔴⚪⚪⚪, 7 min)
+
+At each step, subtract the projection of $r_{j+1}$ onto every previous
+$q_i$ — and do it **twice** ("twice is enough", Kahan).  Add this as a
+`reorth='full'` branch.
+
+Cost: $O(k^2)$ extra work, which dominates for large $k$ but is fine for the
+~30 steps we typically run.
+"""))
+    cells.append(code(r"""
+_, _, orth_full = lanczos_track_orth(lambda v: A40 @ v, dim=40, k=40, reorth='full')
+
+plt.figure()
+plt.semilogy(orth_none, label='no reorth')
+plt.semilogy(orth_full, label='full reorth (twice)')
+plt.xlabel('step'); plt.ylabel(r'$\| Q^\top Q - I \|_\infty$')
+plt.legend(); plt.title('Full reorth keeps orthogonality at fp32 epsilon')
+plt.show()
+"""))
+    cells.append(md(r"""
+### Exercise 5.3: Selective reorthogonalization (🔴🔴🔴⚪⚪, 12 min)
+
+Full reorth wastes work most steps.  **Selective reorth** (Paige) only fires
+when the residual norm drops far below what it "should" be.  Heuristic:
+if $\|r_{j+1}\| < 0.717 \|A q_j\|$, reorthogonalize once.
+
+Add `reorth='selective'`.  Plot all three on the same axes.
+
+**Money plot** — this is the figure you'd put in a paper.
+"""))
+    cells.append(code(r"""
+_, _, orth_sel = lanczos_track_orth(lambda v: A40 @ v, dim=40, k=40, reorth='selective')
+
+plt.figure(figsize=(8, 4.5))
+plt.semilogy(orth_none, label='none')
+plt.semilogy(orth_full, label='full (twice-is-enough)')
+plt.semilogy(orth_sel,  label='selective (Paige)')
+plt.axhline(1e-7, color='k', linestyle=':', alpha=0.6, label='fp32 eps')
+plt.xlabel('Lanczos step'); plt.ylabel(r'$\| Q^\top Q - I \|_\infty$')
+plt.title('Money plot: orthogonality loss across reorth strategies')
+plt.legend(); plt.show()
+"""))
 
 
 def _section_6_hessian_topk(cells):
