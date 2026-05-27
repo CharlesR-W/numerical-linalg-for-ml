@@ -216,7 +216,128 @@ print(f'all 20 Rayleigh quotients in [{lam_min:.3f}, {lam_max:.3f}] ✓')
 
 
 def _section_1_hvp(cells):
-    pass
+    cells.append(md(r"""
+## 1. The matvec is the unit of cost
+
+The **Hessian-vector product** (HVP) `H @ v` is the only way we'll touch the
+Hessian of a neural network — never the matrix itself.  Three equivalent
+implementations, all running in $O(\text{forward pass})$ time.
+
+**Setup:**
+- model: `toy_mlp(seed=1)`, ~250 params
+- loss: cross-entropy on a small batch
+
+We have three ways to compute $H v$:
+1. **Finite differences on the gradient:** $\frac{\nabla \mathcal{L}(\theta + \epsilon v) - \nabla \mathcal{L}(\theta - \epsilon v)}{2\epsilon}$
+2. **Double backward (the Pearlmutter trick):** form the scalar $g^\top v$ and differentiate again.
+3. **JVP of grad:** push $v$ forward through `grad`, using `torch.func.jvp`.
+"""))
+    cells.append(code("""
+# Setup
+torch.manual_seed(0)
+model = toy_mlp(seed=1)
+X = torch.randn(8, 20)
+y = torch.randint(0, 4, (8,))
+P = count_params(model)
+v = torch.randn(P)
+print(f'model: {P} params')
+"""))
+    cells.append(md(r"""
+### Exercise 1.1: HVP via double backward (🔴🔴⚪⚪⚪, 10 min)
+
+Implement `hvp_double_backward(model, X, y, v)`.  Hint: build a single flat
+parameter tensor with `requires_grad=True`, recompute the loss with
+`torch.func.functional_call`, take the first gradient with
+`create_graph=True`, then take a second gradient of $g \cdot v$.
+"""))
+    cells.append(code("""
+import torch.nn.functional as F
+from torch.func import functional_call
+
+def flat_params(model):
+    return torch.cat([p.detach().reshape(-1) for p in model.parameters()])
+
+def unflatten_into_dict(flat, ref_named):
+    out, i = {}, 0
+    for n, p in ref_named.items():
+        out[n] = flat[i:i+p.numel()].view_as(p)
+        i += p.numel()
+    return out
+
+def hvp_double_backward(model, X, y, v):
+    # YOUR CODE HERE
+    raise NotImplementedError
+
+tests.test_hvp(hvp_double_backward)
+"""))
+    cells.append(md(r"""
+### Exercise 1.2: HVP via JVP of grad (🔴🔴🔴⚪⚪, 12 min)
+
+Same answer, different machinery.  Use `torch.func.grad` to build a function
+that returns the flat gradient, then `torch.func.jvp` to push `v` forward
+through it.
+
+The result of `jvp(f, (x,), (v,))` is `(f(x), df_x(v))`.  Use the second.
+"""))
+    cells.append(code("""
+from torch.func import grad, jvp
+
+def hvp_jvp_of_grad(model, X, y, v):
+    # YOUR CODE HERE
+    raise NotImplementedError
+
+tests.test_hvp(hvp_jvp_of_grad)
+"""))
+    cells.append(md(r"""
+### Exercise 1.3: HVP via finite differences (🔴⚪⚪⚪⚪, 5 min)
+
+Central differences on `grad`.  Slow, noisy, but the reference-of-references
+that we'll use to sanity-check the others.  Use $\epsilon = 10^{-3}$.
+"""))
+    cells.append(code("""
+def hvp_finite_difference(model, X, y, v, eps=1e-3):
+    # YOUR CODE HERE
+    raise NotImplementedError
+
+# Verify all three agree.
+v_test = torch.randn(P)
+h_dbl = hvp_double_backward(model, X, y, v_test)
+h_jvp = hvp_jvp_of_grad(model, X, y, v_test)
+h_fd  = hvp_finite_difference(model, X, y, v_test)
+
+print(f'||double - jvp||_inf = {(h_dbl - h_jvp).abs().max():.2e}')
+print(f'||double - fd||_inf  = {(h_dbl - h_fd).abs().max():.2e}  (FD is noisier)')
+assert torch.allclose(h_dbl, h_jvp, atol=1e-5)
+assert torch.allclose(h_dbl, h_fd,  atol=5e-3)
+print('all three agree ✓')
+"""))
+    cells.append(md(r"""
+### Exercise 1.4: Timing (🔴⚪⚪⚪⚪, 5 min)
+
+Time all three HVPs.  Expected ordering: `jvp_of_grad` ≈ `double_backward`
+(both single forward+backward); `finite_difference` ≈ 2× as costly
+(two gradient computations).
+
+**Punchline:** an HVP is one forward + one backward, independent of $P$.
+That's why we never materialize the Hessian.
+"""))
+    cells.append(code("""
+import time
+
+def time_hvp(fn, n_calls=20):
+    fn(model, X, y, v)  # warmup
+    t0 = time.perf_counter()
+    for _ in range(n_calls):
+        fn(model, X, y, v)
+    return (time.perf_counter() - t0) / n_calls
+
+t_dbl = time_hvp(hvp_double_backward)
+t_jvp = time_hvp(hvp_jvp_of_grad)
+t_fd  = time_hvp(hvp_finite_difference)
+print(f'double backward: {t_dbl*1e3:.2f} ms')
+print(f'jvp of grad:     {t_jvp*1e3:.2f} ms')
+print(f'finite diff:     {t_fd*1e3:.2f} ms (≈ 2× the others)')
+"""))
 
 
 def _section_2_power(cells):
