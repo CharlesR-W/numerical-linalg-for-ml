@@ -9,7 +9,7 @@ Hessian** and the **empirical NTK**.
 | Notebook                          | Status      | Time   |
 |-----------------------------------|-------------|--------|
 | 1. Krylov (power iter + Lanczos)  | shipped     | ~145m  |
-| 2. Randomized (rSVD + eNTK)       | planned     | ~100m  |
+| 2. Randomized (rSVD + eNTK)       | shipped     | ~100m  |
 | 3. Estimation + Perturbation      | planned     | ~115m  |
 | 4. Capstone (CNN spectroscopy)    | planned     | ~120m  |
 
