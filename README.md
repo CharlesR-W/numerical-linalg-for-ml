@@ -11,7 +11,7 @@ Hessian** and the **empirical NTK**.
 | 1. Krylov (power iter + Lanczos)  | shipped     | ~145m  |
 | 2. Randomized (rSVD + eNTK)       | shipped     | ~100m  |
 | 3. Estimation + Perturbation      | shipped     | ~115m  |
-| 4. Capstone (CNN spectroscopy)    | planned     | ~120m  |
+| 4. Capstone (tiny_mlp across training) | shipped     | ~120m  |
 
 See `design.md` for the full design.
 
