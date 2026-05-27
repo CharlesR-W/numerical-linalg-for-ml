@@ -429,7 +429,73 @@ print('✓ matches')
 
 
 def _section_3_deflation(cells):
-    pass
+    cells.append(md(r"""
+## 3. Deflation: getting top-k from power iteration
+
+Once you have $(\lambda_1, v_1)$, subtract the rank-1 piece:
+
+$$
+A' = A - \lambda_1 v_1 v_1^\top
+$$
+
+Now run power iteration on $A'$ to get $(\lambda_2, v_2)$.  Repeat.
+
+In matrix-free land, you don't form $A'$ explicitly.  You define a *deflated
+matvec*:
+
+```python
+def deflated_matvec(v):
+    out = matvec(v)
+    for lam, u in zip(found_vals, found_vecs):
+        out = out - lam * (u @ v) * u
+    return out
+```
+"""))
+    cells.append(md(r"""
+### Exercise 3.1: Deflated power iteration (🔴🔴⚪⚪⚪, 10 min)
+
+Recover the top-3 eigenpairs.  Verify against `torch.linalg.eigvalsh` on the
+materialized Hessian.
+
+**Warning:** naive deflation is fragile.  After ~5 deflations, accumulated
+orthogonality error in the found eigenvectors makes the deflated operator
+drift.  This is what Lanczos (next section) fixes.
+"""))
+    cells.append(code(r"""
+def power_iteration_deflated(matvec, dim, k, num_iters_per=300, seed=0):
+    # YOUR CODE HERE
+    raise NotImplementedError
+
+eigvals, eigvecs = power_iteration_deflated(matvec_H, dim=P, k=3, num_iters_per=400, seed=0)
+# Compare by magnitude — power iteration finds largest-|λ|, and the Hessian
+# may be indefinite at this point in training.
+top3_by_mag = true_eigs.abs().sort(descending=True).values[:3]
+print(f'top-3 by power+deflation (signed):    {[f"{x:+.3f}" for x in eigvals]}')
+print(f'top-3 by torch.linalg (|λ|, sorted):  {top3_by_mag.tolist()}')
+assert torch.allclose(
+    torch.tensor([abs(e) for e in eigvals]).sort(descending=True).values,
+    top3_by_mag, atol=1e-2,
+)
+print('✓ magnitudes match')
+"""))
+    cells.append(md(r"""
+### Exercise 3.2: Watch deflation degrade (🔴🔴⚪⚪⚪, 7 min)
+
+Push deflation to $k = 10$.  Plot relative error of each successive
+eigenvalue.  Observe degradation past $k \approx 5$.
+"""))
+    cells.append(code(r"""
+k_max = 10
+eigvals_k, _ = power_iteration_deflated(matvec_H, dim=P, k=k_max, num_iters_per=300, seed=0)
+true_topk = true_eigs.abs().sort(descending=True).values[:k_max].tolist()
+
+rel_err = [abs(abs(e) - t) / t for e, t in zip(eigvals_k, true_topk)]
+plt.figure()
+plt.semilogy(range(1, k_max+1), rel_err, 'o-')
+plt.xlabel('eigenvalue index'); plt.ylabel('relative error')
+plt.title('Naive deflation degrades past ~5 eigenvalues')
+plt.show()
+"""))
 
 
 def _section_4_lanczos(cells):
