@@ -341,7 +341,91 @@ print(f'finite diff:     {t_fd*1e3:.2f} ms (≈ 2× the others)')
 
 
 def _section_2_power(cells):
-    pass
+    cells.append(md(r"""
+## 2. Power iteration
+
+The simplest matrix-free eigenvalue method.  Given a matvec, iterate:
+
+$$
+v_{k+1} = \frac{A v_k}{\|A v_k\|}, \qquad \lambda_k = v_k^\top A v_k
+$$
+
+The Rayleigh quotient $\lambda_k$ converges to the **largest-magnitude**
+eigenvalue at rate $|\lambda_2/\lambda_1|^k$.  Small ratio = fast convergence,
+nearly-degenerate spectrum = pathologically slow.
+"""))
+    cells.append(md(r"""
+### Exercise 2.1: Implement power iteration (🔴🔴⚪⚪⚪, 8 min)
+
+Return the top eigenvalue, the top eigenvector, and a *history* of per-step
+absolute change in eigenvalue estimate (for the convergence plot below).
+"""))
+    cells.append(code("""
+def power_iteration(matvec, dim, num_iters=200, tol=1e-10, seed=0):
+    # YOUR CODE HERE
+    raise NotImplementedError
+
+tests.test_power_iteration(lambda mv, dim, num_iters, seed:
+                            power_iteration(mv, dim, num_iters, seed=seed)[:2])
+"""))
+    cells.append(md(r"""
+### Exercise 2.2: Convergence rate vs spectral gap (🔴🔴⚪⚪⚪, 10 min)
+
+Build three diagonal SPD matrices with engineered spectra:
+- **wide gap:** eigs = [10, 1, 1, ..., 1].  Ratio = 0.1, fast.
+- **narrow gap:** eigs = [10, 9.5, 1, ..., 1].  Ratio = 0.95, slow.
+- **tied:** eigs = [10, 10, 1, ..., 1].  Ratio = 1.0, no convergence.
+
+Plot the per-step Rayleigh-quotient change on semilog axes.  Verify the
+slope matches $\log_{10}|\lambda_2/\lambda_1|$.
+"""))
+    cells.append(code(r"""
+def make_diag_spd(eigs):
+    return torch.diag(torch.tensor(eigs, dtype=torch.float64))
+
+specs = {
+    'wide gap (λ₂/λ₁ = 0.1)':   [10.0] + [1.0]*49,
+    'narrow gap (λ₂/λ₁ = 0.95)': [10.0, 9.5] + [1.0]*48,
+    'tied (λ₂/λ₁ = 1.0)':        [10.0, 10.0] + [1.0]*48,
+}
+
+fig, ax = plt.subplots()
+for name, eigs in specs.items():
+    A = make_diag_spd(eigs)
+    matvec = lambda v: A @ v.double()
+    _, _, hist = power_iteration(matvec, dim=50, num_iters=120, seed=0)
+    ax.semilogy(hist, label=name)
+ax.set_xlabel('iteration'); ax.set_ylabel(r'$|\lambda^{(k)} - \lambda^{(k-1)}|$')
+ax.legend(); ax.set_title('Power iteration: convergence vs spectral gap')
+plt.show()
+"""))
+    cells.append(md(r"""
+### Exercise 2.3: Power iteration on the Hessian (🔴🔴⚪⚪⚪, 7 min)
+
+Use the toy MLP from Section 1.  Define a matvec that calls
+`hvp_double_backward` and run power iteration to find the top eigenvalue of
+the Hessian.
+
+For comparison, materialize the full Hessian (you *can* for 250 params) and
+verify against `torch.linalg.eigvalsh`.
+"""))
+    cells.append(code("""
+def hessian_matvec_factory(model, X, y):
+    def matvec(v):
+        return hvp_double_backward(model, X, y, v)
+    return matvec
+
+matvec_H = hessian_matvec_factory(model, X, y)
+top_eig, top_vec, _ = power_iteration(matvec_H, dim=P, num_iters=200, seed=0)
+print(f'power iteration top |λ| = {top_eig:.4f}')
+
+# Ground truth: materialize the Hessian using HVP on each basis vector.
+H_full = torch.stack([matvec_H(torch.eye(P)[i]) for i in range(P)])
+true_eigs = torch.linalg.eigvalsh((H_full + H_full.T) / 2)
+print(f'true top |λ| = {true_eigs.abs().max():.4f}')
+assert abs(abs(top_eig) - true_eigs.abs().max().item()) < 1e-3
+print('✓ matches')
+"""))
 
 
 def _section_3_deflation(cells):
