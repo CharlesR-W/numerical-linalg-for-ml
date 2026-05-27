@@ -130,3 +130,55 @@ def power_iteration_deflated(matvec, dim, k, num_iters_per=300, seed=0):
         found_vals.append(eigval)
         found_vecs.append(v)
     return found_vals, found_vecs
+
+
+def lanczos(matvec, dim, k, reorth: str = "selective", seed: int = 0):
+    """Lanczos tridiagonalization with three reorthogonalization modes.
+
+    Args:
+        matvec: callable v -> Av, for symmetric A.
+        dim: ambient dimension.
+        k: number of Lanczos steps (=> at most k Ritz values).
+        reorth: 'none', 'full', or 'selective'.
+        seed: RNG seed for the starting vector.
+
+    Returns: (ritz_values, Q) where Q is (dim, k) with columns the Lanczos basis.
+    """
+    if reorth not in {"none", "full", "selective"}:
+        raise ValueError(f"reorth={reorth!r}")
+    g = torch.Generator().manual_seed(seed)
+    q = torch.randn(dim, generator=g)
+    q = q / q.norm()
+    Q = torch.zeros(dim, k)
+    alphas = torch.zeros(k)
+    betas = torch.zeros(k - 1)
+    q_prev = torch.zeros(dim)
+    beta_prev = 0.0
+
+    for j in range(k):
+        Q[:, j] = q
+        Aq = matvec(q)
+        alpha = q @ Aq
+        alphas[j] = alpha
+        r = Aq - alpha * q - beta_prev * q_prev
+
+        if reorth == "full" and j > 0:
+            r = r - Q[:, : j + 1] @ (Q[:, : j + 1].T @ r)
+            r = r - Q[:, : j + 1] @ (Q[:, : j + 1].T @ r)  # twice-is-enough
+        elif reorth == "selective" and j > 0:
+            r_norm = r.norm()
+            if r_norm < 0.717 * (Aq.norm()):
+                r = r - Q[:, : j + 1] @ (Q[:, : j + 1].T @ r)
+
+        beta = r.norm().item()
+        if j < k - 1:
+            betas[j] = beta
+            if beta < 1e-14:
+                break
+            q_prev = q
+            q = r / beta
+            beta_prev = beta
+
+    T = torch.diag(alphas) + torch.diag(betas, 1) + torch.diag(betas, -1)
+    ritz = torch.linalg.eigvalsh(T)
+    return ritz, Q
