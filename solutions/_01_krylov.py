@@ -81,3 +81,52 @@ def hvp_finite_difference(model, X, y, v, eps: float = 1e-3):
 
 
 reference_hvp = hvp_double_backward
+
+
+def power_iteration(matvec, dim, num_iters=200, tol=1e-10, seed=0):
+    """Plain power iteration.
+
+    Returns: (top eigenvalue estimate, top eigvec, list of per-iter Rayleigh
+    quotient errors vs final estimate).
+    """
+    g = torch.Generator().manual_seed(seed)
+    v = torch.randn(dim, generator=g)
+    v = v / v.norm()
+    history = []
+    eigval = 0.0
+    for _ in range(num_iters):
+        Av = matvec(v)
+        new_eigval = (v @ Av).item()
+        v = Av / (Av.norm() + 1e-30)
+        history.append(abs(new_eigval - eigval))
+        if abs(new_eigval - eigval) < tol:
+            eigval = new_eigval
+            break
+        eigval = new_eigval
+    return eigval, v, history
+
+
+def power_iteration_deflated(matvec, dim, k, num_iters_per=300, seed=0):
+    """Power iteration with rank-1 deflation to recover top-k eigenpairs."""
+    g = torch.Generator().manual_seed(seed)
+    found_vals, found_vecs = [], []
+
+    def deflated_matvec(v):
+        out = matvec(v)
+        for lam, u in zip(found_vals, found_vecs):
+            out = out - lam * (u @ v) * u
+        return out
+
+    for _ in range(k):
+        v0 = torch.randn(dim, generator=g)
+        v0 = v0 / v0.norm()
+        v = v0
+        eigval = 0.0
+        for _ in range(num_iters_per):
+            Av = deflated_matvec(v)
+            new_eigval = (v @ Av).item()
+            v = Av / (Av.norm() + 1e-30)
+            eigval = new_eigval
+        found_vals.append(eigval)
+        found_vecs.append(v)
+    return found_vals, found_vecs
