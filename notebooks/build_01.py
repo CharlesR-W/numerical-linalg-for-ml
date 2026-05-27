@@ -650,7 +650,92 @@ plt.legend(); plt.show()
 
 
 def _section_6_hessian_topk(cells):
-    pass
+    cells.append(md(r"""
+## 6. Hessian top-k in practice
+
+Bringing it together: Lanczos with selective reorth on the Hessian of the
+**tiny MLP** trained for a few steps on 7×7 MNIST.
+
+We compute the top-10 eigenvalues two ways:
+1. Matrix-free Lanczos via our HVP.
+2. Materialize the full ~2k × ~2k Hessian, eigendecompose explicitly.
+
+Compare — they should match.  And then look at the same Hessian *before*
+training vs *after*: outliers appear, the bulk consolidates.
+"""))
+    cells.append(code("""
+from src.data import load_mnist_7x7
+
+# Set up tiny_mlp + a small training run (just enough to see Hessian change).
+torch.manual_seed(0)
+model_mnist = tiny_mlp(seed=0)
+X_train, y_train = load_mnist_7x7(n=500, seed=0)
+P_mnist = count_params(model_mnist); print(f'tiny_mlp: {P_mnist} params')
+
+# === Lanczos top-10 at init ===
+matvec_init = lambda v: hvp_double_backward(model_mnist, X_train, y_train, v)
+# YOUR CODE HERE: call lanczos_track_orth with reorth='selective', k=30,
+# unpack the first element (Ritz values) into ritz_init.
+ritz_init = None
+assert ritz_init is not None and len(ritz_init) >= 10
+print(f'top-10 |λ| at init (Lanczos): {sorted(ritz_init.abs().tolist(), reverse=True)[:10]}')
+"""))
+    cells.append(code("""
+# Ground-truth check: materialize the Hessian (P x P), eigendecompose.
+H_full_init = torch.stack([hvp_double_backward(model_mnist, X_train, y_train, torch.eye(P_mnist)[i])
+                          for i in range(P_mnist)])
+H_full_init = (H_full_init + H_full_init.T) / 2
+true_eigs_init = torch.linalg.eigvalsh(H_full_init)
+true_top10 = true_eigs_init.abs().sort(descending=True).values[:10]
+print(f'top-10 |λ| at init (explicit): {true_top10.tolist()}')
+"""))
+    cells.append(md(r"""
+### Exercise 6.1: Train a bit, recompute (🔴🔴⚪⚪⚪, 10 min)
+
+Run 200 SGD steps with lr=0.1, batch size 64.  Recompute top-10 eigenvalues.
+Plot init-vs-trained on the same axes.
+"""))
+    cells.append(code(r"""
+opt = torch.optim.SGD(model_mnist.parameters(), lr=0.1)
+for step in range(200):
+    idx = torch.randint(0, len(X_train), (64,))
+    opt.zero_grad()
+    loss = F.cross_entropy(model_mnist(X_train[idx]), y_train[idx])
+    loss.backward()
+    opt.step()
+print(f'final loss: {loss.item():.4f}')
+
+matvec_trained = lambda v: hvp_double_backward(model_mnist, X_train, y_train, v)
+ritz_trained = None  # YOUR CODE HERE: same as ritz_init but for the trained model.
+assert ritz_trained is not None
+
+top10_init = sorted(ritz_init.abs().tolist(), reverse=True)[:10]
+top10_trained = sorted(ritz_trained.abs().tolist(), reverse=True)[:10]
+
+fig, ax = plt.subplots()
+ax.plot(range(1, 11), top10_init,    'o-', label='at init')
+ax.plot(range(1, 11), top10_trained, 's-', label='after training')
+ax.set_xlabel('rank'); ax.set_ylabel(r'$|\lambda_k|$')
+ax.set_yscale('log'); ax.legend()
+ax.set_title('Hessian top-10 eigenvalues: init vs trained')
+plt.show()
+"""))
+    cells.append(md(r"""
+### Wrap-up
+
+You can now compute the top-k spectrum of any Hessian you can take an HVP of.
+
+**Where we are on the O() table:**
+
+| Cost                          | Notebook 1                              |
+|-------------------------------|-----------------------------------------|
+| matvec ≈ O(forward + backward)| HVP, three implementations              |
+| power iter top-1              | k = O(log(1/ε)/log(λ₁/λ₂)) matvecs       |
+| power iter + deflation top-k  | k×above; degrades past ~5 due to drift   |
+| Lanczos top-k                 | O(k) matvecs + O(k²) for reorth          |
+
+**Next:** Notebook 2 covers randomized methods and the empirical NTK.
+"""))
 
 
 if __name__ == "__main__":
