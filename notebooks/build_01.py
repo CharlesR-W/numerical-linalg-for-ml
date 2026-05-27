@@ -499,7 +499,72 @@ plt.show()
 
 
 def _section_4_lanczos(cells):
-    pass
+    cells.append(md(r"""
+## 4. Lanczos: the three-term recurrence
+
+Lanczos builds an orthonormal basis for the **Krylov subspace**
+
+$$
+\mathcal{K}_k(A, b) = \operatorname{span}\{b, Ab, A^2 b, \ldots, A^{k-1}b\}
+$$
+
+via a three-term recurrence.  The matrix $A$ projected into this basis is
+*tridiagonal*: $T_k = Q_k^\top A Q_k$, where $Q_k = [q_0, q_1, \ldots, q_{k-1}]$.
+
+The eigenvalues of $T_k$ — called **Ritz values** — converge to the
+**extremes** of $A$'s spectrum first.
+
+**Why "extremes first"?**  $\mathcal{K}_k$ is the space of degree-$(k-1)$
+polynomials in $A$ applied to $b$.  Polynomials approximate well-separated
+points easily; in-bulk eigenvalues are harder to resolve.
+
+**The recurrence:**
+
+$$
+\beta_{j+1} q_{j+1} = A q_j - \alpha_j q_j - \beta_j q_{j-1}
+$$
+
+with $\alpha_j = q_j^\top A q_j$ and $\beta_{j+1} = \|r_{j+1}\|$.
+"""))
+    cells.append(md(r"""
+### Exercise 4.1: Implement Lanczos without reorthogonalization (🔴🔴🔴⚪⚪, 20 min)
+
+Return `(ritz_vals, Q)` where `Q` is the (dim × k) basis.  Use
+`torch.linalg.eigvalsh(T)` to get the Ritz values from the tridiagonal.
+"""))
+    cells.append(code("""
+def lanczos_no_reorth(matvec, dim, k, seed=0):
+    # YOUR CODE HERE
+    raise NotImplementedError
+
+# Verify on a small dense matrix where we can compute ground truth.
+torch.manual_seed(42)
+A_dense = torch.randn(60, 60); A_dense = A_dense + A_dense.T
+matvec_dense = lambda v: A_dense @ v
+true_eigs_dense = torch.linalg.eigvalsh(A_dense)
+
+ritz, Q = lanczos_no_reorth(matvec_dense, dim=60, k=20)
+top5 = ritz.sort(descending=True).values[:5]
+true5 = true_eigs_dense.sort(descending=True).values[:5]
+print(f'top-5 Ritz:  {top5.tolist()}')
+print(f'top-5 true:  {true5.tolist()}')
+print(f'max |Δ|: {(top5 - true5).abs().max():.2e}')
+"""))
+    cells.append(md(r"""
+### Exercise 4.2: Watch Ritz values converge (🔴🔴⚪⚪⚪, 8 min)
+
+Run Lanczos for $k \in \{5, 10, 20, 40\}$ on the same matrix.  Plot true
+eigenvalues vs Ritz values at each $k$.  Watch the extremes converge first.
+"""))
+    cells.append(code("""
+fig, axes = plt.subplots(1, 4, figsize=(15, 4), sharey=True)
+for ax, k in zip(axes, [5, 10, 20, 40]):
+    ritz, _ = lanczos_no_reorth(matvec_dense, dim=60, k=k)
+    eigenvalue_compare(true_eigs_dense, ritz, ax=ax)
+    ax.set_title(f'k = {k}')
+plt.suptitle('Lanczos Ritz values converge to extremes first')
+plt.tight_layout(); plt.show()
+"""))
 
 
 def _section_5_orthogonality(cells):
