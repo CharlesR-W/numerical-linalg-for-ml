@@ -16,6 +16,8 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
+    "nbclient>=0.10",
+    "ipykernel>=6.29",
 ]
 
 [tool.ruff]

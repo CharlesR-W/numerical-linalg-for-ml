@@ -381,7 +381,7 @@ slope matches $\log_{10}|\lambda_2/\lambda_1|$.
 """))
     cells.append(code(r"""
 def make_diag_spd(eigs):
-    return torch.diag(torch.tensor(eigs, dtype=torch.float64))
+    return torch.diag(torch.tensor(eigs, dtype=torch.float32))
 
 specs = {
     'wide gap (λ₂/λ₁ = 0.1)':   [10.0] + [1.0]*49,
@@ -392,9 +392,11 @@ specs = {
 fig, ax = plt.subplots()
 for name, eigs in specs.items():
     A = make_diag_spd(eigs)
-    matvec = lambda v: A @ v.double()
+    matvec = lambda v, A=A: A @ v
     _, _, hist = power_iteration(matvec, dim=50, num_iters=120, seed=0)
-    ax.semilogy(hist, label=name)
+    # Avoid log(0) on semilogy when exact convergence hits.
+    hist_safe = [max(h, 1e-30) for h in hist]
+    ax.semilogy(hist_safe, label=name)
 ax.set_xlabel('iteration'); ax.set_ylabel(r'$|\lambda^{(k)} - \lambda^{(k-1)}|$')
 ax.legend(); ax.set_title('Power iteration: convergence vs spectral gap')
 plt.show()
@@ -589,7 +591,7 @@ at every step**.  Run for 40 steps on a 40×40 random symmetric matrix in
 """))
     cells.append(code(r"""
 def lanczos_track_orth(matvec, dim, k, reorth='none', seed=0):
-    \"\"\"As above but also returns orthogonality-error history.\"\"\"
+    '''As above but also returns orthogonality-error history.'''
     # YOUR CODE HERE: copy your lanczos_no_reorth and add per-step orth tracking.
     raise NotImplementedError
 
